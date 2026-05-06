@@ -1,6 +1,7 @@
 import requests
 import socket
 import urllib.parse
+import time
 
 SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
 BLOCKLIST_URL = "https://antifilter.download/list/ip.txt"
@@ -8,11 +9,13 @@ BLOCKLIST_URL = "https://antifilter.download/list/ip.txt"
 def get_info(address):
     try:
         ip = socket.gethostbyname(address)
-        res = requests.get(f"https://ipapi.co/{ip}/country_code/", timeout=5)
-        country = res.text if res.status_code == 200 and len(res.text) < 4 else "IP"
-        return ip, country
+        # Получаем двухбуквенный код (RU, NL, DE)
+        res = requests.get(f"http://ip-api.com/json/{ip}?fields=status,countryCode", timeout=5).json()
+        if res.get("status") == "success":
+            return ip, res.get("countryCode")
+        return ip, "UN"
     except:
-        return None, "IP"
+        return None, "UN"
 
 def main():
     try:
@@ -36,11 +39,13 @@ def main():
             if not (sni.endswith('.ru') or host.endswith('.ru')):
                 continue
 
-            ip, country = get_info(host)
+            ip, country_code = get_info(host)
+            time.sleep(0.4) # Небольшая пауза для стабильности API
             
             if ip and ip not in blocked_data:
-                display_sni = sni if sni else host
-                new_name = f"{country} | {display_sni} | {counter}"
+                # Формат: КОД_СТРАНЫ SNI #НОМЕР
+                # Именно такой формат (код страны в начале) заставляет Hiddify менять иконку
+                new_name = f"{country_code.upper()} {sni if sni else host} #{counter}"
                 
                 base_part = code.split('#')[0]
                 safe_name = urllib.parse.quote(new_name)
