@@ -30,6 +30,4 @@ jobs:
             git add valid_vless.txt
             git commit -m "Update" || exit 0
             git push
-          else
-            exit 1
           fi
