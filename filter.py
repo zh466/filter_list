@@ -1,65 +1,67 @@
 import requests
 import socket
 import urllib.parse
-import time
+import geoip2.database
+import os
 
 SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
 BLOCKLIST_URL = "https://antifilter.download/list/ip.txt"
+DB_PATH = 'country.mmdb'
 
-def get_flag(country_code):
-    if not country_code or len(country_code) != 2 or country_code == "IP":
-        return "🌐"
-    return "".join(chr(127397 + ord(c)) for c in country_code.upper())
-
-def get_info(address):
+def get_country(ip_address):
     try:
-        ip = socket.gethostbyname(address)
-        # Используем альтернативное API (ipwho.is) - оно быстрее и стабильнее
-        res = requests.get(f"https://ipwho.is/{ip}", timeout=5).json()
-        if res.get("success"):
-            return ip, res.get("country_code")
-        return ip, "IP"
+        with geoip2.database.Reader(DB_PATH) as reader:
+            response = reader.country(ip_address)
+            return response.country.iso_code or "ZZ"
     except:
-        return None, "IP"
+        return "ZZ"
 
 def main():
+    if not os.path.exists(DB_PATH):
+        print("GeoIP database not found!")
+        return
+
     try:
         blocked_data = requests.get(BLOCKLIST_URL, timeout=15).text
         my_codes = requests.get(SOURCE_URL, timeout=15).text.splitlines()
     except:
         return
     
-    valid_codes = []
-    counter = 1
-    
+    temp_list = []
     for code in my_codes:
         if not code.startswith("vless://"): continue
-        
         try:
             parsed = urllib.parse.urlparse(code)
+            host = parsed.netloc.split('@')[-1].split(':')[0].lower()
             params = urllib.parse.parse_qs(parsed.query)
             sni = params.get('sni', [''])[0].lower()
-            host = parsed.netloc.split('@')[-1].split(':')[0].lower()
             
-            # Фильтр только по .ru
+            # Фильтр по .ru
             if not (sni.endswith('.ru') or host.endswith('.ru')):
                 continue
 
-            ip, country_code = get_info(host)
-            time.sleep(0.3) 
+            ip = socket.gethostbyname(host)
+            if ip in blocked_data: continue
             
-            if ip and ip not in blocked_data:
-                flag = get_flag(country_code)
-                display_sni = sni if sni else host
-                # Формат как в твоем примере: Флаг Название — #Номер
-                new_name = f"{flag} {display_sni} — #{counter}"
-                
-                base_part = code.split('#')[0]
-                safe_name = urllib.parse.quote(new_name)
-                valid_codes.append(f"{base_part}#{safe_name}")
-                counter += 1
+            c_code = get_country(ip)
+            
+            temp_list.append({
+                "code": code.split('#')[0],
+                "sni": sni if sni else host,
+                "country": c_code.upper()
+            })
         except:
             continue
+    
+    # СОРТИРОВКА: (Сначала НЕ Россия, потом по алфавиту стран, Россия в конце)
+    temp_list.sort(key=lambda x: (x['country'] == 'RU', x['country'], x['sni']))
+    
+    valid_codes = []
+    for i, item in enumerate(temp_list, 1):
+        # Название: код страны + SNI. Большинство приложений подхватят флаг по коду.
+        new_name = f"{item['country']} {item['sni']} — #{i}"
+        safe_name = urllib.parse.quote(new_name)
+        valid_codes.append(f"{item['code']}#{safe_name}")
     
     with open("valid_vless.txt", "w") as f:
         f.write("\n".join(valid_codes))
