@@ -5,11 +5,14 @@ import urllib.parse
 SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
 BLOCKLIST_URL = "https://antifilter.download/list/ip.txt"
 
-def get_ip(address):
+def get_info(address):
     try:
-        return socket.gethostbyname(address)
+        ip = socket.gethostbyname(address)
+        res = requests.get(f"https://ipapi.co/{ip}/country_code/", timeout=5)
+        country = res.text if res.status_code == 200 else "UN"
+        return ip, country
     except:
-        return None
+        return None, "UN"
 
 def main():
     try:
@@ -19,6 +22,7 @@ def main():
         return
     
     valid_codes = []
+    counter = 1
     
     for code in my_codes:
         if not code.startswith("vless://"): continue
@@ -26,27 +30,21 @@ def main():
         try:
             parsed = urllib.parse.urlparse(code)
             params = urllib.parse.parse_qs(parsed.query)
+            sni = params.get('sni', [''])[0].lower()
+            host = parsed.netloc.split('@')[-1].split(':')[0].lower()
             
-            # 1. Проверяем SNI (если он есть)
-            sni = params.get('sni', [None])[0]
-            
-            # 2. Проверяем сам адрес сервера (host)
-            host = parsed.netloc.split('@')[-1].split(':')[0]
-            
-            # Проверка: если SNI или хост заканчиваются на .ru
-            is_russian_domain = False
-            if sni and sni.lower().endswith('.ru'):
-                is_russian_domain = True
-            elif host.lower().endswith('.ru'):
-                is_russian_domain = True
-                
-            if not is_russian_domain:
+            if not (sni.endswith('.ru') or host.endswith('.ru')):
                 continue
 
-            # 3. Дополнительная проверка IP, чтобы сервер не был в бане
-            ip = get_ip(host)
+            ip, country = get_info(host)
             if ip and ip not in blocked_data:
-                valid_codes.append(code)
+                display_sni = sni if sni else host
+                new_name = f"{country} | {display_sni} | {counter}"
+                
+                base_part = code.split('#')[0]
+                safe_name = urllib.parse.quote(new_name)
+                valid_codes.append(f"{base_part}#{safe_name}")
+                counter += 1
         except:
             continue
     
