@@ -3,7 +3,6 @@ import socket
 import urllib.parse
 
 SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
-WHITE_LIST_URL = "https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/issues/56"
 BLOCKLIST_URL = "https://antifilter.download/list/ip.txt"
 
 def get_ip(address):
@@ -15,7 +14,6 @@ def get_ip(address):
 def main():
     try:
         blocked_data = requests.get(BLOCKLIST_URL, timeout=15).text
-        white_list = set(requests.get(WHITE_LIST_URL, timeout=15).text.splitlines())
         my_codes = requests.get(SOURCE_URL, timeout=15).text.splitlines()
     except:
         return
@@ -29,17 +27,24 @@ def main():
             parsed = urllib.parse.urlparse(code)
             params = urllib.parse.parse_qs(parsed.query)
             
-            # Извлекаем SNI из кода
+            # 1. Проверяем SNI (если он есть)
             sni = params.get('sni', [None])[0]
             
-            # Если SNI нет или его нет в белом списке — пропускаем
-            if not sni or sni not in white_list:
+            # 2. Проверяем сам адрес сервера (host)
+            host = parsed.netloc.split('@')[-1].split(':')[0]
+            
+            # Проверка: если SNI или хост заканчиваются на .ru
+            is_russian_domain = False
+            if sni and sni.lower().endswith('.ru'):
+                is_russian_domain = True
+            elif host.lower().endswith('.ru'):
+                is_russian_domain = True
+                
+            if not is_russian_domain:
                 continue
 
-            # Проверяем IP сервера на общую блокировку
-            host = parsed.netloc.split('@')[-1].split(':')[0]
+            # 3. Дополнительная проверка IP, чтобы сервер не был в бане
             ip = get_ip(host)
-            
             if ip and ip not in blocked_data:
                 valid_codes.append(code)
         except:
