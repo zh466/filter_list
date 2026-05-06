@@ -1,8 +1,8 @@
 import requests
 import socket
 
-SOURCE_URL = "https://github.com/zieng2/wl/blob/main/vless_lite.txt"
-BLOCKLIST_URL = "https://antifilter.network/download/ip_sum.txt"
+SOURCE_URL = "ТВОЯ_ССЫЛКА_НА_RAW_СПИСОК_VLESS"
+BLOCKLIST_URL = "https://antifilter.download/list/ip.txt"
 
 def get_ip(address):
     try:
@@ -11,8 +11,16 @@ def get_ip(address):
         return None
 
 def main():
-    blocked_data = requests.get(BLOCKLIST_URL).text
-    my_codes = requests.get(SOURCE_URL).text.splitlines()
+    try:
+        r = requests.get(BLOCKLIST_URL, timeout=15)
+        blocked_data = r.text
+    except:
+        return
+
+    try:
+        my_codes = requests.get(SOURCE_URL, timeout=15).text.splitlines()
+    except:
+        return
     
     valid_codes = []
     
