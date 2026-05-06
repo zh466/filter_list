@@ -19,9 +19,10 @@ jobs:
       - name: Install dependencies
         run: pip install requests geoip2
 
-      - name: Download GeoIP Lite Database
+      - name: Download GeoIP Database
         run: |
-          wget -q https://github.com/P3TERX/GeoLite2-City-CSV/raw/master/GeoLite2-Country.mmdb -O country.mmdb
+          # Используем стабильное зеркало
+          curl -L -o country.mmdb https://github.com/Loyalsoldier/geoip/releases/latest/download/country.mmdb
 
       - name: Run filter script
         run: python filter.py
