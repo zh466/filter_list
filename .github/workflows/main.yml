@@ -1,7 +1,7 @@
 name: Update VLESS List
 on:
   schedule:
-    - cron: '0 */3 * * *'
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -26,6 +26,10 @@ jobs:
         run: |
           git config --global user.name "VLESS-Bot"
           git config --global user.email "bot@github.com"
-          git add valid_vless.txt
-          git commit -m "Update" || exit 0
-          git push
+          if [ -f valid_vless.txt ]; then
+            git add valid_vless.txt
+            git commit -m "Update" || exit 0
+            git push
+          else
+            exit 1
+          fi
