@@ -1,7 +1,7 @@
 import requests
 import socket
 
-SOURCE_URL = "ТВОЯ_ССЫЛКА_НА_RAW_СПИСОК_VLESS"
+SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
 BLOCKLIST_URL = "https://antifilter.download/list/ip.txt"
 
 def get_ip(address):
