@@ -8,6 +8,13 @@ SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
 BLOCKLIST_URL = "https://antifilter.download/list/ip.txt"
 DB_PATH = 'country.mmdb'
 
+def get_flag(country_code):
+    """Превращает код страны (NL, DE, RU) в соответствующий эмодзи флага."""
+    if not country_code or len(country_code) != 2 or country_code == "ZZ":
+        return "🌐"
+    # Алгоритм перевода ISO-кода в Unicode Regional Indicator Symbols
+    return "".join(chr(127397 + ord(c)) for c in country_code.upper())
+
 def get_country(ip_address):
     try:
         with geoip2.database.Reader(DB_PATH) as reader:
@@ -18,7 +25,7 @@ def get_country(ip_address):
 
 def main():
     if not os.path.exists(DB_PATH):
-        print("GeoIP database not found!")
+        print("База GeoIP не найдена!")
         return
 
     try:
@@ -36,7 +43,7 @@ def main():
             params = urllib.parse.parse_qs(parsed.query)
             sni = params.get('sni', [''])[0].lower()
             
-            # Фильтр по .ru
+            # Оставляем только те, где SNI или Host заканчивается на .ru
             if not (sni.endswith('.ru') or host.endswith('.ru')):
                 continue
 
@@ -53,13 +60,14 @@ def main():
         except:
             continue
     
-    # СОРТИРОВКА: (Сначала НЕ Россия, потом по алфавиту стран, Россия в конце)
+    # Сортировка: сначала НЕ Россия (по алфавиту), Россия (RU) — в хвосте
     temp_list.sort(key=lambda x: (x['country'] == 'RU', x['country'], x['sni']))
     
     valid_codes = []
     for i, item in enumerate(temp_list, 1):
-        # Название: код страны + SNI. Большинство приложений подхватят флаг по коду.
-        new_name = f"{item['country']} {item['sni']} — #{i}"
+        flag = get_flag(item['country'])
+        # Формат: [ФЛАГ СТРАНЫ] [SNI] — #[НОМЕР]
+        new_name = f"{flag} {item['sni']} — #{i}"
         safe_name = urllib.parse.quote(new_name)
         valid_codes.append(f"{item['code']}#{safe_name}")
     
