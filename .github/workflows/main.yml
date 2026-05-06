@@ -17,7 +17,11 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests geoip2
+
+      - name: Download GeoIP Lite Database
+        run: |
+          wget -q https://github.com/P3TERX/GeoLite2-City-CSV/raw/master/GeoLite2-Country.mmdb -O country.mmdb
 
       - name: Run filter script
         run: python filter.py
