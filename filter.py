@@ -6,16 +6,21 @@ import time
 SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
 BLOCKLIST_URL = "https://antifilter.download/list/ip.txt"
 
+def get_flag(country_code):
+    if not country_code or len(country_code) != 2 or country_code == "IP":
+        return "🌐"
+    return "".join(chr(127397 + ord(c)) for c in country_code.upper())
+
 def get_info(address):
     try:
         ip = socket.gethostbyname(address)
-        # Получаем двухбуквенный код (RU, NL, DE)
-        res = requests.get(f"http://ip-api.com/json/{ip}?fields=status,countryCode", timeout=5).json()
-        if res.get("status") == "success":
-            return ip, res.get("countryCode")
-        return ip, "UN"
+        # Используем альтернативное API (ipwho.is) - оно быстрее и стабильнее
+        res = requests.get(f"https://ipwho.is/{ip}", timeout=5).json()
+        if res.get("success"):
+            return ip, res.get("country_code")
+        return ip, "IP"
     except:
-        return None, "UN"
+        return None, "IP"
 
 def main():
     try:
@@ -36,16 +41,18 @@ def main():
             sni = params.get('sni', [''])[0].lower()
             host = parsed.netloc.split('@')[-1].split(':')[0].lower()
             
+            # Фильтр только по .ru
             if not (sni.endswith('.ru') or host.endswith('.ru')):
                 continue
 
             ip, country_code = get_info(host)
-            time.sleep(0.4) # Небольшая пауза для стабильности API
+            time.sleep(0.3) 
             
             if ip and ip not in blocked_data:
-                # Формат: КОД_СТРАНЫ SNI #НОМЕР
-                # Именно такой формат (код страны в начале) заставляет Hiddify менять иконку
-                new_name = f"{country_code.upper()} {sni if sni else host} #{counter}"
+                flag = get_flag(country_code)
+                display_sni = sni if sni else host
+                # Формат как в твоем примере: Флаг Название — #Номер
+                new_name = f"{flag} {display_sni} — #{counter}"
                 
                 base_part = code.split('#')[0]
                 safe_name = urllib.parse.quote(new_name)
