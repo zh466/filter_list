@@ -39,5 +39,5 @@ def main():
     with open("valid_vless.txt", "w") as f:
         f.write("\n".join(valid_codes))
 
-if name == "main":
+if __name__ == "__main__":
     main()
