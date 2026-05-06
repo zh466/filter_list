@@ -9,10 +9,10 @@ def get_info(address):
     try:
         ip = socket.gethostbyname(address)
         res = requests.get(f"https://ipapi.co/{ip}/country_code/", timeout=5)
-        country = res.text if res.status_code == 200 else "UN"
+        country = res.text if res.status_code == 200 and len(res.text) < 4 else "IP"
         return ip, country
     except:
-        return None, "UN"
+        return None, "IP"
 
 def main():
     try:
@@ -37,6 +37,7 @@ def main():
                 continue
 
             ip, country = get_info(host)
+            
             if ip and ip not in blocked_data:
                 display_sni = sni if sni else host
                 new_name = f"{country} | {display_sni} | {counter}"
