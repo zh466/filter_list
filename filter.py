@@ -13,65 +13,68 @@ def get_flag(country_code):
 def main():
     try:
         blocked_data = requests.get(BLOCKLIST_URL, timeout=15).text
-        my_codes = requests.get(SOURCE_URL, timeout=15).text.splitlines()
+        # Берем только уникальные строки из твоего файла
+        raw_codes = list(dict.fromkeys(requests.get(SOURCE_URL, timeout=15).text.splitlines()))
     except: return
     
-    servers_data = []
-    unique_ips = set()
+    processed_data = []
+    ips_to_check = []
 
-    # 1. Собираем уникальные серверы
-    for code in my_codes:
+    for code in raw_codes:
         if not code.startswith("vless://"): continue
         try:
-            parsed = urllib.parse.urlparse(code)
+            # Отрезаем старое название, если оно было
+            clean_link = code.split('#')[0]
+            parsed = urllib.parse.urlparse(clean_link)
             host = parsed.netloc.split('@')[-1].split(':')[0].lower()
             params = urllib.parse.parse_qs(parsed.query)
             sni = params.get('sni', [''])[0].lower()
             
+            # Фильтр по .ru
             if not (sni.endswith('.ru') or host.endswith('.ru')): continue
 
             ip = socket.gethostbyname(host)
-            if ip in unique_ips or ip in blocked_data: continue
+            if ip in blocked_data: continue
             
-            unique_ips.add(ip)
-            servers_data.append({
-                "code": code.split('#')[0],
+            # Сохраняем данные, чтобы потом сопоставить с ответом API
+            processed_data.append({
+                "link": clean_link,
                 "sni": sni if sni else host,
                 "ip": ip
             })
+            ips_to_check.append(ip)
         except: continue
 
-    # 2. Мгновенная и точная проверка стран (сразу пачкой до 100 IP за раз)
+    # Пакетная проверка стран (точно по списку IP)
     ip_country_map = {}
-    ip_list = list(unique_ips)
-    
-    for i in range(0, len(ip_list), 100):
-        batch = ip_list[i:i+100]
+    for i in range(0, len(ips_to_check), 100):
+        batch = ips_to_check[i:i+100]
         try:
-            # Используем самый точный сервис для VPN-адресов
             res = requests.post("http://ip-api.com/batch?fields=query,countryCode", json=batch, timeout=10).json()
             for item in res:
-                if "query" in item and "countryCode" in item:
-                    ip_country_map[item["query"]] = item["countryCode"]
-        except:
-            pass
+                ip_country_map[item["query"]] = item.get("countryCode", "ZZ")
+        except: pass
 
-    # 3. Присваиваем страны и сортируем
-    for server in servers_data:
-        server["country"] = ip_country_map.get(server["ip"], "ZZ")
+    # Сборка финального списка
+    final_list = []
+    for item in processed_data:
+        country = ip_country_map.get(item["ip"], "ZZ")
+        final_list.append({
+            "link": item["link"],
+            "sni": item["sni"],
+            "country": country.upper()
+        })
 
-    # Сортировка: Зарубежные сверху, Россия (RU) — всегда внизу
-    servers_data.sort(key=lambda x: (x['country'] == 'RU', x['country'], x['sni']))
+    # Сортировка: Сначала НЕ RU, Россия в конце
+    final_list.sort(key=lambda x: (x['country'] == 'RU', x['country'], x['sni']))
     
-    # 4. Формируем ссылки с ЭМОДЗИ
     valid_codes = []
-    for i, item in enumerate(servers_data, 1):
+    for i, item in enumerate(final_list, 1):
         flag = get_flag(item['country'])
-        # Формат: 🇳🇱 yandex.ru — #1
-        new_name = f"{flag} {item['sni']} — #{i}" 
-        
+        # Формируем новое название
+        new_name = f"{flag} {item['sni']} — #{i}"
         safe_name = urllib.parse.quote(new_name)
-        valid_codes.append(f"{item['code']}#{safe_name}")
+        valid_codes.append(f"{item['link']}#{safe_name}")
     
     with open("valid_vless.txt", "w") as f:
         f.write("\n".join(valid_codes))
