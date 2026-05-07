@@ -1,40 +1,25 @@
 import requests
 import socket
 import urllib.parse
-import geoip2.database
-import os
 
 SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
 BLOCKLIST_URL = "https://antifilter.download/list/ip.txt"
-DB_PATH = 'country.mmdb'
 
 def get_flag(country_code):
-    """Превращает код страны (NL, DE, RU) в соответствующий эмодзи флага."""
     if not country_code or len(country_code) != 2 or country_code == "ZZ":
         return "🌐"
-    # Алгоритм перевода ISO-кода в Unicode Regional Indicator Symbols
     return "".join(chr(127397 + ord(c)) for c in country_code.upper())
 
-def get_country(ip_address):
-    try:
-        with geoip2.database.Reader(DB_PATH) as reader:
-            response = reader.country(ip_address)
-            return response.country.iso_code or "ZZ"
-    except:
-        return "ZZ"
-
 def main():
-    if not os.path.exists(DB_PATH):
-        print("База GeoIP не найдена!")
-        return
-
     try:
         blocked_data = requests.get(BLOCKLIST_URL, timeout=15).text
         my_codes = requests.get(SOURCE_URL, timeout=15).text.splitlines()
-    except:
-        return
+    except: return
     
-    temp_list = []
+    servers_data = []
+    unique_ips = set()
+
+    # 1. Собираем уникальные серверы
     for code in my_codes:
         if not code.startswith("vless://"): continue
         try:
@@ -43,31 +28,48 @@ def main():
             params = urllib.parse.parse_qs(parsed.query)
             sni = params.get('sni', [''])[0].lower()
             
-            # Оставляем только те, где SNI или Host заканчивается на .ru
-            if not (sni.endswith('.ru') or host.endswith('.ru')):
-                continue
+            if not (sni.endswith('.ru') or host.endswith('.ru')): continue
 
             ip = socket.gethostbyname(host)
-            if ip in blocked_data: continue
+            if ip in unique_ips or ip in blocked_data: continue
             
-            c_code = get_country(ip)
-            
-            temp_list.append({
+            unique_ips.add(ip)
+            servers_data.append({
                 "code": code.split('#')[0],
                 "sni": sni if sni else host,
-                "country": c_code.upper()
+                "ip": ip
             })
+        except: continue
+
+    # 2. Мгновенная и точная проверка стран (сразу пачкой до 100 IP за раз)
+    ip_country_map = {}
+    ip_list = list(unique_ips)
+    
+    for i in range(0, len(ip_list), 100):
+        batch = ip_list[i:i+100]
+        try:
+            # Используем самый точный сервис для VPN-адресов
+            res = requests.post("http://ip-api.com/batch?fields=query,countryCode", json=batch, timeout=10).json()
+            for item in res:
+                if "query" in item and "countryCode" in item:
+                    ip_country_map[item["query"]] = item["countryCode"]
         except:
-            continue
+            pass
+
+    # 3. Присваиваем страны и сортируем
+    for server in servers_data:
+        server["country"] = ip_country_map.get(server["ip"], "ZZ")
+
+    # Сортировка: Зарубежные сверху, Россия (RU) — всегда внизу
+    servers_data.sort(key=lambda x: (x['country'] == 'RU', x['country'], x['sni']))
     
-    # Сортировка: сначала НЕ Россия (по алфавиту), Россия (RU) — в хвосте
-    temp_list.sort(key=lambda x: (x['country'] == 'RU', x['country'], x['sni']))
-    
+    # 4. Формируем ссылки с ЭМОДЗИ
     valid_codes = []
-    for i, item in enumerate(temp_list, 1):
+    for i, item in enumerate(servers_data, 1):
         flag = get_flag(item['country'])
-        # Формат: [ФЛАГ СТРАНЫ] [SNI] — #[НОМЕР]
-        new_name = f"{flag} {item['sni']} — #{i}"
+        # Формат: 🇳🇱 yandex.ru — #1
+        new_name = f"{flag} {item['sni']} — #{i}" 
+        
         safe_name = urllib.parse.quote(new_name)
         valid_codes.append(f"{item['code']}#{safe_name}")
     
