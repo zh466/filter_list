@@ -1,7 +1,7 @@
 name: Update VLESS List
 on:
   schedule:
-    - cron: '0 */1 * * *'
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -17,12 +17,7 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: pip install requests geoip2
-
-      - name: Download GeoIP Database
-        run: |
-          # Используем стабильное зеркало
-          curl -L -o country.mmdb https://github.com/Loyalsoldier/geoip/releases/latest/download/country.mmdb
+        run: pip install requests
 
       - name: Run filter script
         run: python filter.py
