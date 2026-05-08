@@ -2,8 +2,8 @@ name: Update VLESS List
 
 on:
   schedule:
-    - cron: '0 */1 * * *' # Запуск каждые 1 часов
-  workflow_dispatch: # Возможность ручного запуска
+    - cron: '0 */6 * * *' # Запуск каждые 6 часов
+  workflow_dispatch: # Ручной запуск
 
 jobs:
   build:
@@ -23,12 +23,21 @@ jobs:
       - name: Run filter
         run: python filter.py
 
-      - name: Commit changes
+      - name: Commit and Push changes
         run: |
           git config --global user.name "VLESS-Bot"
           git config --global user.email "bot@github.com"
-          git pull origin main --rebase
+          
+          # 1. Сначала подготавливаем файл
           git add valid_vless.txt
-          git commit -m "Auto-update: $(date)" || exit 0
+          
+          # 2. Делаем коммит. Если изменений нет, || true не даст экшену упасть.
+          git commit -m "Auto-update: $(date)" || true
+          
+          # 3. Теперь подтягиваем изменения из репозитория (если они были)
+          git pull origin main --rebase
+          
+          # 4. Отправляем в репозиторий
           git push origin main
+
 
