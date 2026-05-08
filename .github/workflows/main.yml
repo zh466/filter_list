@@ -26,14 +26,11 @@ jobs:
       - name: Run filter script
         run: python filter.py
 
-      - name: Run Filter
-        run: |
-          python filter.py
-          
-      - name: Commit and Push
+      - name: Commit changes
         run: |
           git config --global user.name "VLESS-Bot"
           git config --global user.email "bot@github.com"
+          git pull origin main --rebase
           git add valid_vless.txt
-          git commit -m "Update list: 🇧🇬Bulgaria-№X style" || exit 0
+          git commit -m "Update list" || exit 0
           git push origin main
