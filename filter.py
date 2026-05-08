@@ -6,6 +6,7 @@ import concurrent.futures
 import time
 
 SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
+# Твой расширенный список доменов
 WHITE_LIST = [
     "api-maps.yandex.ru", "cdp.perekrestok.ru", "max.ru", "ozon.ru", 
     "vk.ru", "5post-gate.x5.ru", "ads.x5.ru", "eh.vk.com", 
@@ -24,7 +25,7 @@ def real_get_check(item):
         
         with context.wrap_socket(sock, server_hostname=item['sni']) as ssock:
             ssock.settimeout(3.0)
-            # Формируем запрос, как в мобильном приложении
+            # Формируем запрос, максимально похожий на тест в приложении
             http_request = (
                 f"GET / HTTP/1.1\r\n"
                 f"Host: {item['sni']}\r\n"
@@ -33,6 +34,7 @@ def real_get_check(item):
             )
             ssock.sendall(http_request.encode())
             response = ssock.recv(1024)
+            # Если получили любой HTTP ответ, значит прокси тянет трафик
             if b"HTTP/" in response:
                 item['ping'] = int((time.time() - start_time) * 1000)
                 return item
@@ -53,26 +55,24 @@ def main():
         code = code.strip()
         if not code.startswith("vless://"): continue
         try:
-            # Разделяем на саму ссылку и название
-            parts = code.split('#', 1)
-            uri_part = parts[0]
-            # Если названия нет, оставляем пустым
-            original_name = parts[1] if len(parts) > 1 else ""
+            # Сохраняем строку в первозданном виде
+            full_original_line = code
             
+            # Для тестов и фильтрации вычленяем технические параметры
+            uri_part = code.split('#')[0]
             parsed = urllib.parse.urlparse(uri_part)
             host = parsed.netloc.split('@')[-1].split(':')[0].lower()
             port = int(parsed.netloc.split(':')[-1]) if ':' in parsed.netloc else 443
             params = urllib.parse.parse_qs(parsed.query)
             sni = params.get('sni', [host])[0].lower()
             
-            # Фильтруем по доменам (название здесь не участвует)
+            # Проверка по доменам
             if any(domain in f"{sni} {host}".lower() for domain in WHITE_LIST):
                 ip = socket.gethostbyname(host)
                 if ip not in seen_ips:
                     seen_ips.add(ip)
                     pre_filtered.append({
-                        "uri": uri_part, 
-                        "name": original_name,
+                        "original": full_original_line, # Сохраняем оригинал
                         "ip": ip, 
                         "port": port, 
                         "sni": sni
@@ -86,15 +86,11 @@ def main():
 
     if not processed_data: return
 
-    # Сортировка по пингу
+    # Сортируем по пингу (лучшие сверху)
     processed_data.sort(key=lambda x: x['ping'])
     
-    final_output = []
-    for i, item in enumerate(processed_data, 1):
-        # Собираем обратно: ссылка#СтароеИмя — #Номер
-        # Если старого имени нет, будет просто ссылка# — #Номер
-        separator = " — " if item['name'] else ""
-        final_output.append(f"{item['uri']}#{item['name']}{separator}#{i}")
+    # Записываем в файл только оригинальные строки, без добавок
+    final_output = [item['original'] for item in processed_data]
     
     with open("valid_vless.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(final_output))
