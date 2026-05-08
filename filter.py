@@ -5,7 +5,6 @@ import urllib.parse
 import concurrent.futures
 import time
 
-# Источник и список доменов
 SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
 WHITE_LIST = [
     "api-maps.yandex.ru", "cdp.perekrestok.ru", "max.ru", 
@@ -14,25 +13,29 @@ WHITE_LIST = [
 ]
 
 def extreme_ping_check(item):
-    """Строгая проверка: TCP + SSL + ALPN + Write тест"""
+    """
+    Максимальная проверка без установки Xray-core.
+    Включает ALPN-согласование и 'стресс-тест' открытого сокета.
+    """
     try:
         start_time = time.time()
-        # 1. TCP коннект
         sock = socket.create_connection((item['ip'], item['port']), timeout=4)
         
-        # 2. Настройка SSL с поддержкой протоколов VLESS
         context = ssl.create_default_context()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
+        # VLESS обычно требует поддержку современных протоколов
         context.set_alpn_protocols(['h2', 'http/1.1'])
         
         with context.wrap_socket(sock, server_hostname=item['sni']) as ssock:
+            # Если это просто заглушка или мертвый прокси, 
+            # попытка записать туда данные или прочитать их вызовет ошибку Broken Pipe.
             ssock.settimeout(2.0)
             try:
-                # 3. Тестовая запись (проверка, что сокет реально готов к данным)
+                # Кидаем один пустой байт. Настоящий сервер его проглотит.
                 ssock.write(b'\x00')
             except:
-                return None # Сервер-заглушка сбросит соединение здесь
+                return None # Отвалился при передаче данных
                 
             item['ping'] = int((time.time() - start_time) * 1000)
             return item
@@ -52,33 +55,25 @@ def main():
         code = code.strip()
         if not code.startswith("vless://"): continue
         try:
-            # Отделяем ссылку от старого имени
             parts = code.split('#')
             clean_link = parts[0]
-            
             parsed = urllib.parse.urlparse(clean_link)
             host = parsed.netloc.split('@')[-1].split(':')[0].lower()
-            try:
-                port = int(parsed.netloc.split(':')[-1])
+            try: port = int(parsed.netloc.split(':')[-1])
             except: port = 443
-                
             params = urllib.parse.parse_qs(parsed.query)
             sni = params.get('sni', [host])[0].lower()
             
-            # Фильтр по белому списку доменов
             if any(domain in f"{sni} {host}".lower() for domain in WHITE_LIST):
                 ip = socket.gethostbyname(host)
                 if ip not in seen_ips:
                     seen_ips.add(ip)
                     pre_filtered.append({
-                        "full_code": clean_link, 
-                        "ip": ip, 
-                        "port": port, 
-                        "sni": sni
+                        "full_code": code, "ip": ip, "host": host, "port": port, "sni": sni
                     })
         except: continue
 
-    # Запускаем проверку в 20 потоков
+    # Многопоточный хард-тест
     processed_data = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         results = list(executor.map(extreme_ping_check, pre_filtered))
@@ -86,7 +81,7 @@ def main():
 
     if not processed_data: return
 
-    # Запрос стран для правильной сортировки (RU вниз)
+    # Проверка стран для сортировки
     ip_country_map = {}
     ips_to_check = [item["ip"] for item in processed_data]
     for i in range(0, len(ips_to_check), 100):
@@ -97,22 +92,22 @@ def main():
                 query = item.get("query")
                 country = item.get("countryCode", "ZZ")
                 isp = item.get("isp", "").lower()
-                # Если провайдер явно российский, помечаем как RU
                 if any(x in isp for x in ['yandex', 'vdsina', 'selectel', 'x5', 'mail.ru', 'vkontakte', 'beeline', 'mts']):
                     country = "RU"
                 ip_country_map[query] = country
         except: pass
 
-    # Сортировка: Зарубежные -> РФ. Внутри групп — по пингу.
     processed_data.sort(key=lambda x: (ip_country_map.get(x['ip'], 'ZZ') == 'RU', x['ping']))
     
-    # Сборка финального файла с простой нумерацией
     valid_codes = []
     for i, item in enumerate(processed_data, 1):
-        valid_codes.append(f"{item['full_code']}# — #{i}")
+        # Только оригинальный код + номер. Без мусора.
+        suffix = f" — #{i}"
+        new_entry = f"{item['full_code']}{suffix}" if "#" in item['full_code'] else f"{item['full_code']}#{suffix}"
+        valid_codes.append(new_entry)
     
     with open("valid_vless.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(valid_codes))
 
 if __name__ == "__main__":
-    main() 
+    main()
