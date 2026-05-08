@@ -12,26 +12,32 @@ WHITE_LIST = [
     "eh.vk.com", "sso.passport.yandex.ru", "m.ok.ru", "kinopoisk.ru"
 ]
 
-def strict_ping_check(item):
+def extreme_ping_check(item):
     """
-    Ультра-строгая проверка: TCP Connect + SSL Handshake.
-    Если SSL не прошел - сервер для VLESS мертв.
+    Максимальная проверка без установки Xray-core.
+    Включает ALPN-согласование и 'стресс-тест' открытого сокета.
     """
     try:
         start_time = time.time()
-        # 1. Базовый коннект
-        sock = socket.create_connection((item['ip'], item['port']), timeout=6)
+        sock = socket.create_connection((item['ip'], item['port']), timeout=4)
         
-        # 2. SSL/TLS Handshake (имитируем реальный запрос через SNI)
         context = ssl.create_default_context()
-        # Отключаем проверку сертификата, т.к. нам важно только 'жив ли протокол'
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
+        # VLESS обычно требует поддержку современных протоколов
+        context.set_alpn_protocols(['h2', 'http/1.1'])
         
         with context.wrap_socket(sock, server_hostname=item['sni']) as ssock:
-            # Если мы дошли сюда - сервер РЕАЛЬНО ответил по протоколу
-            end_time = time.time()
-            item['ping'] = int((end_time - start_time) * 1000)
+            # Если это просто заглушка или мертвый прокси, 
+            # попытка записать туда данные или прочитать их вызовет ошибку Broken Pipe.
+            ssock.settimeout(2.0)
+            try:
+                # Кидаем один пустой байт. Настоящий сервер его проглотит.
+                ssock.write(b'\x00')
+            except:
+                return None # Отвалился при передаче данных
+                
+            item['ping'] = int((time.time() - start_time) * 1000)
             return item
     except:
         return None
@@ -48,18 +54,15 @@ def main():
     for code in raw_codes:
         code = code.strip()
         if not code.startswith("vless://"): continue
-            
         try:
             parts = code.split('#')
             clean_link = parts[0]
             parsed = urllib.parse.urlparse(clean_link)
             host = parsed.netloc.split('@')[-1].split(':')[0].lower()
-            try:
-                port = int(parsed.netloc.split(':')[-1])
+            try: port = int(parsed.netloc.split(':')[-1])
             except: port = 443
-                
             params = urllib.parse.parse_qs(parsed.query)
-            sni = params.get('sni', [host])[0].lower() # Если SNI нет, берем Host
+            sni = params.get('sni', [host])[0].lower()
             
             if any(domain in f"{sni} {host}".lower() for domain in WHITE_LIST):
                 ip = socket.gethostbyname(host)
@@ -70,15 +73,15 @@ def main():
                     })
         except: continue
 
-    # Многопоточный SSL-тест (отсеиваем всё, что выдаст 'НД')
+    # Многопоточный хард-тест
     processed_data = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-        results = list(executor.map(strict_ping_check, pre_filtered))
+        results = list(executor.map(extreme_ping_check, pre_filtered))
         processed_data = [r for r in results if r is not None]
 
     if not processed_data: return
 
-    # Пакетная проверка стран для сортировки
+    # Проверка стран для сортировки
     ip_country_map = {}
     ips_to_check = [item["ip"] for item in processed_data]
     for i in range(0, len(ips_to_check), 100):
@@ -89,17 +92,16 @@ def main():
                 query = item.get("query")
                 country = item.get("countryCode", "ZZ")
                 isp = item.get("isp", "").lower()
-                # Фильтр российских провайдеров
                 if any(x in isp for x in ['yandex', 'vdsina', 'selectel', 'x5', 'mail.ru', 'vkontakte', 'beeline', 'mts']):
                     country = "RU"
                 ip_country_map[query] = country
         except: pass
 
-    # Финальная сортировка: Иномарки -> РФ. Внутри групп - по скорости SSL-отклика.
     processed_data.sort(key=lambda x: (ip_country_map.get(x['ip'], 'ZZ') == 'RU', x['ping']))
     
     valid_codes = []
     for i, item in enumerate(processed_data, 1):
+        # Только оригинальный код + номер. Без мусора.
         suffix = f" — #{i}"
         new_entry = f"{item['full_code']}{suffix}" if "#" in item['full_code'] else f"{item['full_code']}#{suffix}"
         valid_codes.append(new_entry)
