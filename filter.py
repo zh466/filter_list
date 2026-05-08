@@ -8,7 +8,8 @@ TEST_URL = "https://web.telegram.org" # Тот самый URL со скринш�
 
 WHITE_LIST = [
     "api-maps.yandex.ru", "cdp.perekrestok.ru", "max.ru", 
-    "ozon.ru", "vk.ru", "5post-gate.x5.ru", "ads.x5.ru"
+    "ozon.ru", "vk.ru", "5post-gate.x5.ru", "ads.x5.ru",   
+    "eh.vk.com", "sso.passport.yandex.ru", "m.ok.ru", "kinopoisk.ru"
 ]
 
 def check_via_proxy_get(item):
