@@ -20,7 +20,7 @@ def strict_ping_check(item):
     try:
         start_time = time.time()
         # 1. Базовый коннект
-        sock = socket.create_connection((item['ip'], item['port']), timeout=3)
+        sock = socket.create_connection((item['ip'], item['port']), timeout=6)
         
         # 2. SSL/TLS Handshake (имитируем реальный запрос через SNI)
         context = ssl.create_default_context()
