@@ -27,8 +27,14 @@ jobs:
         run: |
           git config --global user.name "VLESS-Bot"
           git config --global user.email "bot@github.com"
-          git pull origin main --rebase
+          
+          # 1. Сначала добавляем изменения в индекс
           git add valid_vless.txt
+          
+          # 2. Теперь стягиваем обновления, если они были в репозитории
+          # Rebase теперь пройдет гладко, так как Гит знает об изменениях
+          git pull origin main --rebase
+          
+          # 3. Фиксируем и отправляем
           git commit -m "Auto-update: $(date)" || exit 0
           git push origin main
-
