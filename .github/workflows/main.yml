@@ -26,10 +26,9 @@ jobs:
       - name: Run filter script
         run: python filter.py
 
-      - name: Run Filter and Rename
+      - name: Run Filter
         run: |
           python filter.py
-          python rename.py
           
       - name: Commit and Push
         run: |
