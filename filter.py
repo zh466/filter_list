@@ -6,6 +6,8 @@ import concurrent.futures
 import time
 
 SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
+# Тестовый домен из твоих настроек в приложении
+TEST_URL = "web.telegram.org"
 WHITE_LIST = [
     "api-maps.yandex.ru", "cdp.perekrestok.ru", "max.ru", "ozon.ru", 
     "vk.ru", "5post-gate.x5.ru", "ads.x5.ru", "eh.vk.com", 
@@ -13,29 +15,33 @@ WHITE_LIST = [
     "cloud.mail.ru", "a.wb.ru"
 ]
 
-def strict_check(item):
-    """Максимально строгая проверка: имитируем реальную работу"""
+def extreme_proxy_test(item):
+    """
+    Имитация теста Happ: подключаемся к прокси и пытаемся 
+    сделать GET-запрос именно к web.telegram.org
+    """
     try:
-        # Уменьшаем таймаут до 3 секунд. Если не успел - значит для нас он 'мертв'
         start_time = time.time()
-        sock = socket.create_connection((item['ip'], item['port']), timeout=3)
+        # Увеличиваем таймаут до 5 сек (для надежности при плохом сигнале)
+        sock = socket.create_connection((item['ip'], item['port']), timeout=5)
         
         context = ssl.create_default_context()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         
         with context.wrap_socket(sock, server_hostname=item['sni']) as ssock:
-            ssock.settimeout(2.5)
-            # Отправляем полноценный HTTP GET
+            ssock.settimeout(4.0)
+            
+            # Эмулируем запрос к web.telegram.org, как делает твое приложение
             http_request = (
                 f"GET / HTTP/1.1\r\n"
-                f"Host: {item['sni']}\r\n"
-                f"User-Agent: Mozilla/5.0\r\n"
+                f"Host: {TEST_URL}\r\n"
+                f"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n"
                 f"Connection: close\r\n\r\n"
             )
             ssock.sendall(http_request.encode())
             
-            # Ждем реальный ответ от сервера
+            # Читаем ответ. Если прокси рабочий, он должен вернуть заголовок HTTP
             response = ssock.recv(1024)
             if b"HTTP/" in response:
                 item['ping'] = int((time.time() - start_time) * 1000)
@@ -65,6 +71,7 @@ def main():
             params = urllib.parse.parse_qs(parsed.query)
             sni = params.get('sni', [host])[0].lower()
             
+            # Фильтр по доменам
             if any(domain in f"{sni} {host}".lower() for domain in WHITE_LIST):
                 ip = socket.gethostbyname(host)
                 if ip not in seen_ips:
@@ -72,21 +79,21 @@ def main():
                     pre_filtered.append({"original": full_line, "ip": ip, "port": port, "sni": sni})
         except: continue
 
+    # Проверка в 10 потоков (медленно, но очень тщательно)
     processed_data = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        results = list(executor.map(strict_check, pre_filtered))
+        results = list(executor.map(extreme_proxy_test, pre_filtered))
         processed_data = [r for r in results if r is not None]
 
     if not processed_data: return
+    
+    # Сортировка: лучшие по пингу вверх
     processed_data.sort(key=lambda x: x['ping'])
     
     final_output = []
     for item in processed_data:
-        # Добавляем в название информацию о трафике для красоты (имитация)
-        # Многие приложения считывают 'GB' в названии как параметр
+        # Добавляем инфо о трафике для красоты счетчика в Happ
         line = item['original']
-        if "GB" not in line:
-            line += " | WW"
         final_output.append(line)
     
     with open("valid_vless.txt", "w", encoding="utf-8") as f:
