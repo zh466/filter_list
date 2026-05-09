@@ -6,7 +6,6 @@ import concurrent.futures
 import time
 
 SOURCE_URL = "https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt"
-# Твой расширенный список доменов
 WHITE_LIST = [
     "api-maps.yandex.ru", "cdp.perekrestok.ru", "max.ru", "ozon.ru", 
     "vk.ru", "5post-gate.x5.ru", "ads.x5.ru", "eh.vk.com", 
@@ -14,18 +13,20 @@ WHITE_LIST = [
     "cloud.mail.ru", "a.wb.ru"
 ]
 
-def real_get_check(item):
-    """Имитация 'via Proxy GET' через реальный HTTP-запрос"""
+def strict_check(item):
+    """Максимально строгая проверка: имитируем реальную работу"""
     try:
+        # Уменьшаем таймаут до 3 секунд. Если не успел - значит для нас он 'мертв'
         start_time = time.time()
-        sock = socket.create_connection((item['ip'], item['port']), timeout=5)
+        sock = socket.create_connection((item['ip'], item['port']), timeout=3)
+        
         context = ssl.create_default_context()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         
         with context.wrap_socket(sock, server_hostname=item['sni']) as ssock:
-            ssock.settimeout(3.0)
-            # Формируем запрос, максимально похожий на тест в приложении
+            ssock.settimeout(2.5)
+            # Отправляем полноценный HTTP GET
             http_request = (
                 f"GET / HTTP/1.1\r\n"
                 f"Host: {item['sni']}\r\n"
@@ -33,8 +34,9 @@ def real_get_check(item):
                 f"Connection: close\r\n\r\n"
             )
             ssock.sendall(http_request.encode())
+            
+            # Ждем реальный ответ от сервера
             response = ssock.recv(1024)
-            # Если получили любой HTTP ответ, значит прокси тянет трафик
             if b"HTTP/" in response:
                 item['ping'] = int((time.time() - start_time) * 1000)
                 return item
@@ -44,7 +46,7 @@ def real_get_check(item):
 
 def main():
     try:
-        response = requests.get(SOURCE_URL, timeout=15)
+        response = requests.get(SOURCE_URL, timeout=10)
         raw_codes = response.text.splitlines()
     except: return
     
@@ -55,10 +57,7 @@ def main():
         code = code.strip()
         if not code.startswith("vless://"): continue
         try:
-            # Сохраняем строку в первозданном виде
-            full_original_line = code
-            
-            # Для тестов и фильтрации вычленяем технические параметры
+            full_line = code
             uri_part = code.split('#')[0]
             parsed = urllib.parse.urlparse(uri_part)
             host = parsed.netloc.split('@')[-1].split(':')[0].lower()
@@ -66,31 +65,29 @@ def main():
             params = urllib.parse.parse_qs(parsed.query)
             sni = params.get('sni', [host])[0].lower()
             
-            # Проверка по доменам
             if any(domain in f"{sni} {host}".lower() for domain in WHITE_LIST):
                 ip = socket.gethostbyname(host)
                 if ip not in seen_ips:
                     seen_ips.add(ip)
-                    pre_filtered.append({
-                        "original": full_original_line, # Сохраняем оригинал
-                        "ip": ip, 
-                        "port": port, 
-                        "sni": sni
-                    })
+                    pre_filtered.append({"original": full_line, "ip": ip, "port": port, "sni": sni})
         except: continue
 
     processed_data = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-        results = list(executor.map(real_get_check, pre_filtered))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        results = list(executor.map(strict_check, pre_filtered))
         processed_data = [r for r in results if r is not None]
 
     if not processed_data: return
-
-    # Сортируем по пингу (лучшие сверху)
     processed_data.sort(key=lambda x: x['ping'])
     
-    # Записываем в файл только оригинальные строки, без добавок
-    final_output = [item['original'] for item in processed_data]
+    final_output = []
+    for item in processed_data:
+        # Добавляем в название информацию о трафике для красоты (имитация)
+        # Многие приложения считывают 'GB' в названии как параметр
+        line = item['original']
+        if "GB" not in line:
+            line += " | 1000GB"
+        final_output.append(line)
     
     with open("valid_vless.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(final_output))
