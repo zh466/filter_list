@@ -86,7 +86,7 @@ def main():
         # Многие приложения считывают 'GB' в названии как параметр
         line = item['original']
         if "GB" not in line:
-            line += " | 1000GB"
+            line += " | WW"
         final_output.append(line)
     
     with open("valid_vless.txt", "w", encoding="utf-8") as f:
