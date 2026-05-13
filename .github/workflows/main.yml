@@ -2,9 +2,9 @@ name: Update VLESS List
 
 on:
   schedule:
-    # 02:00, 03:00 и 10:00 UTC (06:00, 07:00 и 14:00 по Самаре/Тольятти)
-    - cron: '0 2,3,10 * * *'
-  workflow_dispatch:
+    # Запуск в 05 минут каждого часа (01:05, 02:05 и т.д.)
+    - cron: '5 * * * *'
+  workflow_dispatch: # Возможность запустить кнопкой вручную
 
 jobs:
   build:
@@ -29,6 +29,9 @@ jobs:
           git config --global user.name "VLESS-Bot"
           git config --global user.email "bot@github.com"
           git add valid_vless.txt
-          git commit -m "Update list: $(date)" || true
+          
+          # Если файл не изменился, скрипт просто завершится без ошибки
+          git commit -m "Hourly sync: $(date)" || exit 0
+          
           git pull origin main --rebase -X theirs
           git push origin main
