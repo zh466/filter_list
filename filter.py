@@ -9,7 +9,7 @@ WHITE_LIST = [
     "vk.ru", "5post-gate.x5.ru", "ads.x5.ru", "eh.vk.com", 
     "sso.passport.yandex.ru", "m.ok.ru", "kinopoisk.ru",
     "cloud.mail.ru", "a.wb.ru",
-    "dzen.ru", "mail.ru", "ya.ru", "www.avito.ru", "vkvideo.ru", "yandex.ru"
+    "dzen.ru", "mail.ru", "ya.ru", "www.avito.ru", "vkvideo.ru", "yandex.ru", "smartcaptcha.yandexcloud.net", "cluster-russia-3.firstvideocdn.ru"
 ]
 
 def main():
