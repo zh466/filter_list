@@ -14,7 +14,7 @@ WHITE_LIST = [
 
 def main():
     try:
-        response = requests.get(SOURCE_URL, timeout=15)
+        response = requests.get(SOURCE_URL, timeout=20)
         raw_codes = response.text.splitlines()
     except: 
         return
